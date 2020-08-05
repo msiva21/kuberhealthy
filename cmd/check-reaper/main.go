@@ -127,7 +127,7 @@ func listJobPods(client *kubernetes.Clientset, namespace string) (map[string]v1.
 }
 
 // deleteFilteredCheckerPods goes through map of all checker pods and deletes older checker pods
-func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod, cj string) error {
+func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod, kind string) error {
 
 	var err error
 
@@ -162,7 +162,7 @@ func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod
 
 		var allPods []v1.Pod
 
-		if cj == "job" {
+		if kind == "job" {
 			allPods = getAllPodsWithJobName(reapPods, v)
 		} else {
 			allPods = getAllPodsWithCheckName(reapPods, v)
