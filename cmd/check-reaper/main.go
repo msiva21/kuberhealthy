@@ -64,7 +64,7 @@ func main() {
 
 	// delete checker pods
 	log.Infoln("Attempting to delete checker pods")
-	err = deleteFilteredPods(client, checkerPodList)
+	err = deleteFilteredPods(client, checkerPodList, "checker")
 	if err != nil {
 		log.Fatalln("Error found while deleting old checker pods:", err)
 	}
@@ -72,7 +72,7 @@ func main() {
 
 	// delete job pods
 	log.Infoln("Attempting to delete job pods")
-	err = deleteFilteredPods(client, jobPodList)
+	err = deleteFilteredPods(client, jobPodList, "job")
 	if err != nil {
 		log.Fatalln("Error found while deleting old job pods:", err)
 	}
@@ -127,7 +127,7 @@ func listJobPods(client *kubernetes.Clientset, namespace string) (map[string]v1.
 }
 
 // deleteFilteredCheckerPods goes through map of all checker pods and deletes older checker pods
-func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod) error {
+func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod, cj string) error {
 
 	var err error
 
@@ -159,14 +159,22 @@ func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod
 
 		// Delete if there are more than 5 checker pods with the same name in status Succeeded that were created more recently
 		// Delete if the checker pod is Failed and there are more than 5 Failed checker pods of the same type which were created more recently
-		allCheckPods := getAllPodsWithCheckName(reapPods, v)
-		if len(allCheckPods) > MaxPodsThreshold {
+
+		var allPods []v1.Pod
+
+		if cj == "job" {
+			allPods = getAllPodsWithJobName(reapPods, v)
+		} else {
+			allPods = getAllPodsWithCheckName(reapPods, v)
+		}
+
+		if len(allPods) > MaxPodsThreshold {
 
 			failOldCount := 0
 			failCount := 0
 			successOldCount := 0
 			successCount := 0
-			for _, p := range allCheckPods {
+			for _, p := range allPods {
 				if v.CreationTimestamp.Time.Before(p.CreationTimestamp.Time) && p.Status.Phase != v1.PodSucceeded && v.Namespace == p.Namespace {
 					failOldCount++
 				}
@@ -183,7 +191,7 @@ func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod
 
 			// Delete if there are more than 5 checker pods with the same name in status Succeeded that were created more recently
 			if v.Status.Phase == v1.PodSucceeded && successOldCount > MaxPodsThreshold && successCount > MaxPodsThreshold {
-				log.Infoln("Found more than 5 checker pods with the same name in status `Succeeded` that were created more recently. Deleting pod:", k)
+				log.Infoln("Found more than 5 pods with the same name in status `Succeeded` that were created more recently. Deleting pod:", k)
 
 				err = deletePod(client, v)
 				if err != nil {
@@ -195,7 +203,7 @@ func deleteFilteredPods(client *kubernetes.Clientset, reapPods map[string]v1.Pod
 
 			// Delete if the checker pod is Failed and there are more than 5 Failed checker pods of the same type which were created more recently
 			if v.Status.Phase == v1.PodFailed && failOldCount > MaxPodsThreshold && failCount > MaxPodsThreshold {
-				log.Infoln("Found more than 5 `Failed` checker pods of the same type which were created more recently. Deleting pod:", k)
+				log.Infoln("Found more than 5 `Failed` pods of the same type which were created more recently. Deleting pod:", k)
 
 				err = deletePod(client, v)
 				if err != nil {
@@ -223,6 +231,22 @@ func getAllPodsWithCheckName(reapCheckerPods map[string]v1.Pod, pod v1.Pod) []v1
 	}
 
 	return allCheckPods
+}
+
+// getAllPodsWithJobkName finds all job pods for a given khjob
+func getAllPodsWithJobName(reapJobPods map[string]v1.Pod, pod v1.Pod) []v1.Pod {
+
+	var allJobPods []v1.Pod
+
+	jobName := pod.Annotations["comcast.github.io/job-name"]
+
+	for _, v := range reapJobPods {
+		if v.Labels["kuberhealthy-job-name"] == jobName {
+			allJobPods = append(allJobPods, v)
+		}
+	}
+
+	return allJobPods
 }
 
 // deletePod deletes a given pod
